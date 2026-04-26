@@ -9,4 +9,5 @@ typechain-types/
 coverage/
 .DS_Store
 *.log
+.env.example
 
