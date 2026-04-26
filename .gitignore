@@ -1,5 +1,5 @@
 node_modules/
-.env
+*.env
 dist/
 build/
 deployments/
@@ -9,3 +9,4 @@ typechain-types/
 coverage/
 .DS_Store
 *.log
+
