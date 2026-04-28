@@ -1,6 +1,6 @@
 /**
  * Gemini AI Service
- * Central service for all AI operations using Google Gemini 2.0 Flash.
+ * Central service for all AI operations using Google Gemini 3 Flash Preview.
  * Handles: RAG chat, medical imaging vision analysis, disease prediction.
  */
 const { GoogleGenAI } = require("@google/genai");
@@ -49,16 +49,53 @@ class GeminiService {
     });
 
     const response = await client.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents,
       config: {
         systemInstruction: systemPrompt,
         temperature: 0.7,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096,
       },
     });
 
     return response.text;
+  }
+
+  /**
+   * Stream a text response for RAG chat.
+   * @param {string} systemPrompt - System instructions with medical context
+   * @param {string} userMessage - The user's question
+   * @param {Array} conversationHistory - Previous messages [{role, content}]
+   * @yields {string} AI response text chunks
+   */
+  async *chatStream(systemPrompt, userMessage, conversationHistory = []) {
+    const client = this._getClient();
+
+    const contents = [];
+    for (const msg of conversationHistory) {
+      contents.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }],
+      });
+    }
+    contents.push({
+      role: "user",
+      parts: [{ text: userMessage }],
+    });
+
+    const stream = await client.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.7,
+        maxOutputTokens: 4096,
+      },
+    });
+
+    for await (const chunk of stream) {
+      yield chunk.text || "";
+    }
   }
 
   /**
@@ -97,7 +134,7 @@ Provide your analysis in the following JSON format (respond ONLY with valid JSON
 }`;
 
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3-flash-preview",
       contents: [
         {
           role: "user",
@@ -179,7 +216,7 @@ Respond ONLY with valid JSON in this format:
 }`;
 
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3-flash-preview",
       contents: predictionPrompt,
       config: {
         temperature: 0.3,

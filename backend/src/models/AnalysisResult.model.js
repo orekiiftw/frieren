@@ -33,7 +33,7 @@ const analysisResultSchema = new mongoose.Schema(
     },
     modelUsed: {
       type: String,
-      default: "gemini-2.0-flash",
+      default: "gemini-3-flash-preview",
     },
   },
   {

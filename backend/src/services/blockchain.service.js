@@ -65,18 +65,20 @@ class BlockchainService {
     const contractAddress = process.env.CONTRACT_ADDRESS;
     if (contractAddress && this.signer) {
       this.contract = new ethers.Contract(contractAddress, abi, this.signer);
+      console.log(`[Blockchain] Connected to contract at ${contractAddress}`);
+      console.log(`[Blockchain] Signer address: ${this.signer.address}`);
+    } else {
+      console.warn("⚠️  Contract address or signer not available. Blockchain operations will return mock data.");
     }
 
     this._initialized = true;
   }
 
   /**
-   * Grant a doctor access to a patient's records.
+   * Grant a doctor access to a patient's records (via owner relay).
    */
   async grantAccess(patientAddress, doctorAddress) {
     await this._init();
-    // NOTE: In production, the patient signs this tx from their own wallet.
-    // The backend would relay a signed transaction or use account abstraction.
     console.log(`🔓 Granting ${doctorAddress} access to ${patientAddress}'s records`);
 
     if (!this.contract) {
@@ -84,13 +86,13 @@ class BlockchainService {
       return "0xmock_grant_tx_" + Date.now().toString(16);
     }
 
-    const tx = await this.contract.grantAccess(doctorAddress);
+    const tx = await this.contract.grantAccessOnBehalf(patientAddress, doctorAddress);
     const receipt = await tx.wait();
     return receipt.hash;
   }
 
   /**
-   * Revoke a doctor's access to a patient's records.
+   * Revoke a doctor's access to a patient's records (via owner relay).
    */
   async revokeAccess(patientAddress, doctorAddress) {
     await this._init();
@@ -100,7 +102,7 @@ class BlockchainService {
       return "0xmock_revoke_tx_" + Date.now().toString(16);
     }
 
-    const tx = await this.contract.revokeAccess(doctorAddress);
+    const tx = await this.contract.revokeAccessOnBehalf(patientAddress, doctorAddress);
     const receipt = await tx.wait();
     return receipt.hash;
   }
@@ -114,11 +116,18 @@ class BlockchainService {
       console.warn("⚠️  Contract not initialized. Returning mock access: true");
       return true;
     }
-    return await this.contract.checkAccess(patientAddress, doctorAddress);
+    try {
+      const result = await this.contract.checkAccess(patientAddress, doctorAddress);
+      console.log(`[Blockchain] checkAccess(${patientAddress.slice(0, 8)}..., ${doctorAddress.slice(0, 8)}...) = ${result}`);
+      return result;
+    } catch (err) {
+      console.error(`[Blockchain] checkAccess failed:`, err.message);
+      throw err;
+    }
   }
 
   /**
-   * Add a medical record on-chain.
+   * Add a medical record on-chain on behalf of a patient (backend relayer).
    */
   async addRecord(patientAddress, ipfsHash, dataHash, keyMeta) {
     await this._init();
@@ -128,7 +137,7 @@ class BlockchainService {
       return "0xmock_add_record_tx_" + Date.now().toString(16);
     }
 
-    const tx = await this.contract.addRecord(ipfsHash, dataHash, keyMeta);
+    const tx = await this.contract.addRecordOnBehalf(patientAddress, ipfsHash, dataHash, keyMeta);
     const receipt = await tx.wait();
     return receipt.hash;
   }
@@ -156,7 +165,19 @@ class BlockchainService {
         encryptionKeyMeta: "mock-key",
       };
     }
-    return await this.contract.getRecord(patientAddress, index);
+    try {
+      const record = await this.contract.getRecord(patientAddress, index);
+      // Convert BigInt timestamp to Number for JSON serialization
+      return {
+        ipfsHash: record.ipfsHash,
+        timestamp: Number(record.timestamp),
+        dataHash: record.dataHash,
+        encryptionKeyMeta: record.encryptionKeyMeta,
+      };
+    } catch (err) {
+      console.error(`[Blockchain] getRecord(${patientAddress.slice(0, 8)}..., ${index}) failed:`, err.message);
+      throw err;
+    }
   }
 
   /**
@@ -165,16 +186,21 @@ class BlockchainService {
   async getRecords(patientAddress) {
     await this._init();
     const count = await this.getRecordsCount(patientAddress);
+    console.log(`[Blockchain] Patient ${patientAddress.slice(0, 8)}... has ${count} record(s)`);
     const records = [];
     for (let i = 0; i < count; i++) {
-      const record = await this.getRecord(patientAddress, i);
-      records.push({
-        index: i,
-        ipfsHash: record.ipfsHash,
-        timestamp: Number(record.timestamp),
-        dataHash: record.dataHash,
-        encryptionKeyMeta: record.encryptionKeyMeta,
-      });
+      try {
+        const record = await this.getRecord(patientAddress, i);
+        records.push({
+          index: i,
+          ipfsHash: record.ipfsHash,
+          timestamp: Number(record.timestamp),
+          dataHash: record.dataHash,
+          encryptionKeyMeta: record.encryptionKeyMeta,
+        });
+      } catch (err) {
+        console.error(`[Blockchain] Failed to get record ${i} for ${patientAddress.slice(0, 8)}...:`, err.message);
+      }
     }
     return records;
   }

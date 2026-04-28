@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -40,6 +40,10 @@ export const authAPI = {
 // ─── Records API ─────────────────────────────────────
 export const recordsAPI = {
   upload: (data) => api.post('/records/upload', data),
+  uploadFile: (formData) =>
+    api.post('/records/upload', formData, {
+      headers: { 'Content-Type': undefined },
+    }),
   getRecords: (patientAddress) => api.get(`/records/${patientAddress}`),
   downloadRecord: (patientAddress, index) =>
     api.get(`/records/${patientAddress}/${index}/download`),
@@ -50,12 +54,14 @@ export const accessAPI = {
   grant: (doctorAddress) => api.post('/access/grant', { doctorAddress }),
   revoke: (doctorAddress) => api.post('/access/revoke', { doctorAddress }),
   check: (patientAddress) => api.get(`/access/check/${patientAddress}`),
+  getDoctors: () => api.get('/access/doctors'),
+  getPatients: () => api.get('/access/patients'),
 }
 
 // ─── AI API ──────────────────────────────────────────
 export const aiAPI = {
-  chat: (message, conversationHistory = []) =>
-    api.post('/ai/chat', { message, conversationHistory }),
+  chat: (message, conversationHistory = [], patientAddress = null) =>
+    api.post('/ai/chat', { message, conversationHistory, patientAddress }),
   predict: (patientData, predictionType) =>
     api.post('/ai/predict', { patientData, predictionType }),
 }
@@ -64,7 +70,7 @@ export const aiAPI = {
 export const imagingAPI = {
   analyze: (formData) =>
     api.post('/imaging/analyze', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     }),
   getHistory: () => api.get('/imaging/history'),
 }

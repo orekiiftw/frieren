@@ -61,7 +61,7 @@ router.post("/analyze", authMiddleware, upload.single("image"), async (req, res,
       filename: req.file.originalname,
       fileSize: req.file.size,
       ...analysis,
-      modelUsed: "gemini-2.0-flash",
+      modelUsed: "gemini-3-flash-preview",
       processedAt: new Date().toISOString(),
     };
 
@@ -75,7 +75,7 @@ router.post("/analyze", authMiddleware, upload.single("image"), async (req, res,
         fileSize: req.file.size,
       },
       result: resultData,
-      modelUsed: "gemini-2.0-flash",
+      modelUsed: "gemini-3-flash-preview",
     });
 
     res.json({

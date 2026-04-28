@@ -3,15 +3,17 @@ const router = express.Router();
 const { authMiddleware } = require("../middleware/auth.middleware");
 const ragService = require("../services/rag.service");
 const geminiService = require("../services/gemini.service");
+const blockchainService = require("../services/blockchain.service");
 const AnalysisResult = require("../models/AnalysisResult.model");
 
 /**
  * POST /api/ai/chat
- * RAG-powered health assistant using Gemini 2.0 Flash.
+ * RAG-powered health assistant using Gemini 3 Flash Preview.
+ * Doctors can pass patientAddress to query a specific patient's records.
  */
 router.post("/chat", authMiddleware, async (req, res, next) => {
   try {
-    const { message, conversationHistory } = req.body;
+    const { message, conversationHistory, patientAddress } = req.body;
 
     if (!message) {
       return res.status(400).json({
@@ -20,10 +22,28 @@ router.post("/chat", authMiddleware, async (req, res, next) => {
       });
     }
 
+    // Determine which wallet address to use for RAG context
+    let targetWalletAddress = req.user.walletAddress;
+    let targetRole = req.user.role;
+
+    // If doctor provides a patientAddress, verify access and use patient's records
+    if (patientAddress && req.user.role === "doctor") {
+      const hasAccess = await blockchainService.checkAccess(patientAddress, req.user.walletAddress);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have access to this patient's records.",
+        });
+      }
+      targetWalletAddress = patientAddress;
+      targetRole = "patient"; // Speak as if addressing the patient
+      console.log(`[AI] Doctor ${req.user.walletAddress.slice(0, 8)}... querying patient ${patientAddress.slice(0, 8)}... records`);
+    }
+
     const response = await ragService.chat({
       userMessage: message,
-      walletAddress: req.user.walletAddress,
-      role: req.user.role,
+      walletAddress: targetWalletAddress,
+      role: targetRole,
       conversationHistory: conversationHistory || [],
     });
 
@@ -37,8 +57,63 @@ router.post("/chat", authMiddleware, async (req, res, next) => {
 });
 
 /**
+ * POST /api/ai/chat/stream
+ * Streamed RAG-powered health assistant.
+ * Doctors can pass patientAddress to query a specific patient's records.
+ */
+router.post("/chat/stream", authMiddleware, async (req, res, next) => {
+  try {
+    const { message, conversationHistory, patientAddress } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: "message is required.",
+      });
+    }
+
+    // Determine which wallet address to use for RAG context
+    let targetWalletAddress = req.user.walletAddress;
+    let targetRole = req.user.role;
+
+    // If doctor provides a patientAddress, verify access and use patient's records
+    if (patientAddress && req.user.role === "doctor") {
+      const hasAccess = await blockchainService.checkAccess(patientAddress, req.user.walletAddress);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have access to this patient's records.",
+        });
+      }
+      targetWalletAddress = patientAddress;
+      targetRole = "patient";
+    }
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.status(200);
+
+    const stream = ragService.chatStream({
+      userMessage: message,
+      walletAddress: targetWalletAddress,
+      role: targetRole,
+      conversationHistory: conversationHistory || [],
+    });
+
+    for await (const chunk of stream) {
+      if (chunk) res.write(chunk);
+    }
+
+    res.end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * POST /api/ai/predict
- * Disease prediction using Gemini 2.0 Flash.
+ * Disease prediction using Gemini 3 Flash Preview.
  * Supported types: "diabetes", "cardiovascular", "cancer_risk"
  */
 router.post("/predict", authMiddleware, async (req, res, next) => {
@@ -70,7 +145,7 @@ router.post("/predict", authMiddleware, async (req, res, next) => {
       subType: predictionType,
       input: { patientData },
       result: prediction,
-      modelUsed: "gemini-2.0-flash",
+      modelUsed: "gemini-3-flash-preview",
     });
 
     res.json({
